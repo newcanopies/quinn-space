@@ -2,7 +2,6 @@
 //!
 //! Checkout the `README.md` for guidance.
 
-use quinn::ClientConfig;
 use std::{
     fs,
     io::{self, Write},
@@ -16,6 +15,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use tracing::{error, info};
 use url::Url;
+use proto::congestion::BbrConfig;
 
 mod common;
 
@@ -97,8 +97,11 @@ async fn run(options: Opt) -> Result<()> {
     if options.keylog {
         client_crypto.key_log = Arc::new(rustls::KeyLogFile::new());
     }
+    let mut transport_config = quinn::TransportConfig::default();
+    transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
 
-    let client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
+    let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
+    client_config.transport_config(transport_config.into());
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
     endpoint.set_default_client_config(client_config);
 
@@ -190,13 +193,4 @@ impl rustls::client::ServerCertVerifier for SkipServerVerification {
     ) -> std::result::Result<rustls::client::ServerCertVerified, rustls::Error> {
         Ok(rustls::client::ServerCertVerified::assertion())
     }
-}
-
-fn configure_client() -> ClientConfig {
-    let crypto = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_custom_certificate_verifier(SkipServerVerification::new())
-        .with_no_client_auth();
-
-    ClientConfig::new(Arc::new(crypto))
 }
