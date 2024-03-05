@@ -2,6 +2,7 @@
 //!
 //! Checkout the `README.md` for guidance.
 
+use quinn::ClientConfig;
 use std::{
     fs,
     io::{self, Write},
@@ -88,7 +89,8 @@ async fn run(options: Opt) -> Result<()> {
     }
     let mut client_crypto = rustls::ClientConfig::builder()
         .with_safe_defaults()
-        .with_root_certificates(roots)
+        .with_custom_certificate_verifier(SkipServerVerification::new())
+        //.with_root_certificates(roots)
         .with_no_client_auth();
 
     client_crypto.alpn_protocols = common::ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
@@ -162,4 +164,39 @@ fn strip_ipv6_brackets(host: &str) -> &str {
 
 fn duration_secs(x: &Duration) -> f32 {
     x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
+}
+
+// copied from insecure_connection.rs. no it is not the right way to do this, but for now, fast enabling testing.
+//
+// Dummy certificate verifier that treats any certificate as valid.
+/// NOTE, such verification is vulnerable to MITM attacks, but convenient for testing.
+struct SkipServerVerification;
+
+impl SkipServerVerification {
+    fn new() -> Arc<Self> {
+        Arc::new(Self)
+    }
+}
+
+impl rustls::client::ServerCertVerifier for SkipServerVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: std::time::SystemTime,
+    ) -> std::result::Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
+    }
+}
+
+fn configure_client() -> ClientConfig {
+    let crypto = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_custom_certificate_verifier(SkipServerVerification::new())
+        .with_no_client_auth();
+
+    ClientConfig::new(Arc::new(crypto))
 }
