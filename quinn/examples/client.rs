@@ -16,6 +16,7 @@ use clap::Parser;
 use tracing::{error, info};
 use url::Url;
 use proto::congestion::BbrConfig;
+use proto::congestion::NoCCConfig;
 
 mod common;
 
@@ -40,6 +41,9 @@ struct Opt {
     /// Simulate NAT rebinding after connecting
     #[clap(long = "rebind")]
     rebind: bool,
+
+    #[clap(long = "cc")]
+    cc: Option<String>,
 }
 
 fn main() {
@@ -97,11 +101,17 @@ async fn run(options: Opt) -> Result<()> {
     if options.keylog {
         client_crypto.key_log = Arc::new(rustls::KeyLogFile::new());
     }
-    let mut transport_config = quinn::TransportConfig::default();
-    transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
-
     let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
-    client_config.transport_config(transport_config.into());
+    if let Some(cc) = options.cc {
+        let mut transport_config = quinn::TransportConfig::default();
+        // should use match but can't get it to work with String vs &str.
+        if cc == "bbr" {
+            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
+        } else if cc == "none" {
+            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+        } 
+        client_config.transport_config(transport_config.into());
+    }
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
     endpoint.set_default_client_config(client_config);
 
