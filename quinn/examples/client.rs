@@ -19,6 +19,7 @@ use proto::congestion::BbrConfig;
 use proto::congestion::NoCCConfig;
 use proto::TransportConfig;
 use proto::{VarInt};
+use chrono::Utc;
 
 mod common;
 
@@ -145,13 +146,13 @@ async fn run(options: Opt) -> Result<()> {
     let host = options.host.as_deref().unwrap_or(url_host);
 
     eprintln!("connecting to {host} at {remote}");
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
     let conn = endpoint
         .connect(remote, host)?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
     eprintln!("connected at {:?}", start.elapsed());
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -171,7 +172,7 @@ async fn run(options: Opt) -> Result<()> {
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     let response_start = Instant::now();
     eprintln!("request sent at {:?}", response_start - start);
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
     let resp = recv
         .read_to_end(usize::max_value())
         .await
@@ -182,14 +183,14 @@ async fn run(options: Opt) -> Result<()> {
         duration,
         resp.len() as f32 / (duration_secs(&duration) * 1024.0)
     );
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
     io::stdout().write_all(&resp).unwrap();
     io::stdout().flush().unwrap();
     eprintln!("total time from start up to close: {:?}", start.elapsed());
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
     conn.close(0u32.into(), b"done");
     eprintln!("total time from start to after close: {:?}", start.elapsed());
-    eprintln!("clock: {:?}", Instant::now());
+    eprintln!("clock: {:?}", Utc::now());
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
