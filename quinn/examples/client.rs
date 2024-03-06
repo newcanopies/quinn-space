@@ -181,7 +181,9 @@ async fn run(options: Opt) -> Result<()> {
     );
     io::stdout().write_all(&resp).unwrap();
     io::stdout().flush().unwrap();
+    eprintln!("total time from start up to close: {:?}", start.elapsed());
     conn.close(0u32.into(), b"done");
+    eprintln!("total time from start to after close: {:?}", start.elapsed());
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
