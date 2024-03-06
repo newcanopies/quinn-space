@@ -45,9 +45,18 @@ struct Opt {
     #[clap(long = "rebind")]
     rebind: bool,
 
+    // sets the congestion control methods. Since cubic is default, options are:
+    // "bbr" or "none".
+    // The "none" means a cc algo which does no congestion control... (deep space use case)
     #[clap(long = "cc")]
     cc: Option<String>,
 
+    // sets max_idle_timeout to a very large value
+    #[clap(long = "large_max_idle_timeout")]
+    large_max_idle_timeout: bool,
+
+    // sets many transport config parameters to very large values (such as ::MAX) to handle
+    // deep space usage, where delays and disruptions can be in order of minutes, hours, days
     #[clap(long = "dtn")]
     dtn: bool,
 
@@ -111,6 +120,20 @@ async fn run(options: Opt) -> Result<()> {
     let mut transport_config = TransportConfig::default();
     let mut use_transport_config: bool = false; //TODO: another way to avoid using this bool?
 
+    if let Some(cc) = options.cc {
+        // should use match but can't get it to work with String vs &str.
+        if cc == "bbr" {
+            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
+            use_transport_config = true;
+        } else if cc == "none" {
+            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+            use_transport_config = true;
+        }
+    }
+    if options.large_max_idle_timeout {
+        transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+        use_transport_config = true;
+    }
     if options.dtn {
         transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
         transport_config.receive_window(VarInt::MAX);
@@ -123,17 +146,6 @@ async fn run(options: Opt) -> Result<()> {
     }
 
     let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
-    if let Some(cc) = options.cc {
-        let mut transport_config = quinn::TransportConfig::default();
-        // should use match but can't get it to work with String vs &str.
-        if cc == "bbr" {
-            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
-            use_transport_config = true;
-        } else if cc == "none" {
-            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
-            use_transport_config = true;
-        }
-    }
     if use_transport_config {
         client_config.transport_config(transport_config.into());
     }
