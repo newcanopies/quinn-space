@@ -47,8 +47,8 @@ struct Opt {
     #[clap(long = "cc")]
     cc: Option<String>,
 
-    #[clap(long = "longdelay")]
-    longdelay: bool,
+    #[clap(long = "dtn")]
+    dtn: bool,
 
 }
 
@@ -110,13 +110,14 @@ async fn run(options: Opt) -> Result<()> {
     let mut transport_config = TransportConfig::default();
     let mut use_transport_config: bool = false; //TODO: another way to avoid using this bool?
 
-    if options.longdelay {
+    if options.dtn {
         transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
         transport_config.receive_window(VarInt::MAX);
         transport_config.datagram_send_buffer_size(usize::MAX);
         transport_config.send_window(u64::MAX);
         transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
         transport_config.stream_receive_window(VarInt::MAX);
+        transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
         use_transport_config = true;
     }
 
