@@ -14,6 +14,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use tracing::{error, info, info_span};
 use tracing_futures::Instrument as _;
+use proto::VarInt;
 
 mod common;
 
@@ -132,6 +133,7 @@ async fn run(options: Opt) -> Result<()> {
     let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_crypto));
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
+    transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
     if options.stateless_retry {
         server_config.use_retry(true);
     }
