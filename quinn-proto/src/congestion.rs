@@ -8,10 +8,12 @@ use std::time::Instant;
 mod bbr;
 mod cubic;
 mod new_reno;
+mod no_cc;
 
 pub use bbr::{Bbr, BbrConfig};
 pub use cubic::{Cubic, CubicConfig};
 pub use new_reno::{NewReno, NewRenoConfig};
+pub use no_cc::{NoCC, NoCCConfig};
 
 /// Common interface for different congestion controllers
 pub trait Controller: Send {
