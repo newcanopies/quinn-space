@@ -149,7 +149,7 @@ async fn run(options: Opt) -> Result<()> {
 
     while let Some(conn) = endpoint.accept().await {
         eprintln!("connection incoming");
-        eprintln!("clock: {:?}", Utc::now());
+        eprintln!(" clock: {:?}", Utc::now());
         let fut = handle_connection(root.clone(), conn);
         tokio::spawn(async move {
             if let Err(e) = fut.await {
@@ -175,7 +175,7 @@ async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<(
     );
     async {
         eprintln!("established");
-        eprintln!("clock: {:?}", Utc::now());
+        eprintln!(" clock: {:?}", Utc::now());
 
         // Each stream initiated by the client constitutes a new request.
         loop {
@@ -183,7 +183,7 @@ async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<(
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
                     eprintln!("connection closed");
-                    eprintln!("clock: {:?}", Utc::now());
+                    eprintln!(" clock: {:?}", Utc::now());
                     return Ok(());
                 }
                 Err(e) => {
@@ -221,7 +221,7 @@ async fn handle_request(
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
     eprintln!("content = {escaped}");
-    eprintln!("clock: {:?}", Utc::now());
+    eprintln!(" clock: {:?}", Utc::now());
     // Execute the request
     let resp = process_get(&root, &req).unwrap_or_else(|e| {
         error!("failed: {}", e);
@@ -236,7 +236,7 @@ async fn handle_request(
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     eprintln!("complete");
-    eprintln!("clock: {:?}", Utc::now());
+    eprintln!(" clock: {:?}", Utc::now());
     Ok(())
 }
 
