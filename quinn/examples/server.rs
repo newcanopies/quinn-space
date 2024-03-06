@@ -9,6 +9,7 @@ use std::{
     str,
     sync::Arc,
 };
+use std::time::Instant;
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
@@ -102,7 +103,7 @@ async fn run(options: Opt) -> Result<()> {
         let (cert, key) = match fs::read(&cert_path).and_then(|x| Ok((x, fs::read(&key_path)?))) {
             Ok(x) => x,
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
-                info!("generating self-signed certificate");
+                eprintln!("generating self-signed certificate");
                 let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
                 let key = cert.serialize_private_key_der();
                 let cert = cert.serialize_der().unwrap();
@@ -147,7 +148,8 @@ async fn run(options: Opt) -> Result<()> {
     eprintln!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
-        info!("connection incoming");
+        eprintln!("connection incoming");
+        eprintln!("clock: {:?}", Instant::now());
         let fut = handle_connection(root.clone(), conn);
         tokio::spawn(async move {
             if let Err(e) = fut.await {
@@ -172,14 +174,16 @@ async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<(
             .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
     );
     async {
-        info!("established");
+        eprintln!("established");
+        eprintln!("clock: {:?}", Instant::now());
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    info!("connection closed");
+                    eprintln!("connection closed");
+                    eprintln!("clock: {:?}", Instant::now());
                     return Ok(());
                 }
                 Err(e) => {
@@ -216,7 +220,8 @@ async fn handle_request(
         let part = ascii::escape_default(x).collect::<Vec<_>>();
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
-    info!(content = %escaped);
+    eprintln!("content = {escaped}");
+    eprintln!("clock: {:?}", Instant::now());
     // Execute the request
     let resp = process_get(&root, &req).unwrap_or_else(|e| {
         error!("failed: {}", e);
@@ -230,7 +235,8 @@ async fn handle_request(
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
-    info!("complete");
+    eprintln!("complete");
+    eprintln!("clock: {:?}", Instant::now());
     Ok(())
 }
 
