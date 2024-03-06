@@ -194,7 +194,8 @@ async fn run(options: Opt) -> Result<()> {
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
-
+    eprintln!("server ack close");
+    eprintln!("clock: {:?}", Utc::now());
     Ok(())
 }
 
