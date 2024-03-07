@@ -142,6 +142,7 @@ async fn run(options: Opt) -> Result<()> {
         transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
         transport_config.stream_receive_window(VarInt::MAX);
         transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+        transport_config.initial_rtt(Duration::MAX);
         use_transport_config = true;
     }
 

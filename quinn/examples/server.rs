@@ -9,6 +9,7 @@ use std::{
     str,
     sync::Arc,
 };
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
@@ -135,6 +136,7 @@ async fn run(options: Opt) -> Result<()> {
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
     transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+    transport_config.initial_rtt(Duration::MAX);
     if options.stateless_retry {
         server_config.use_retry(true);
     }
