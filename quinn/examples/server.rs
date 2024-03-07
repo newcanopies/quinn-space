@@ -13,7 +13,7 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use clap::Parser;
-use tracing::{error, info, info_span};
+use tracing::{error, info_span};
 use tracing_futures::Instrument as _;
 use proto::VarInt;
 
