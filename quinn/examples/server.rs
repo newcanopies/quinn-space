@@ -16,6 +16,7 @@ use chrono::Utc;
 use clap::Parser;
 use tracing::{error, info_span};
 use tracing_futures::Instrument as _;
+use proto::congestion::NoCCConfig;
 use proto::VarInt;
 
 mod common;
@@ -137,6 +138,14 @@ async fn run(options: Opt) -> Result<()> {
     transport_config.max_concurrent_uni_streams(0_u8.into());
     transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
     transport_config.initial_rtt(Duration::new(2400, 0));
+    transport_config.receive_window(VarInt::MAX);
+    transport_config.datagram_send_buffer_size(usize::MAX);
+    transport_config.send_window(u64::MAX);
+    transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
+    transport_config.stream_receive_window(VarInt::MAX);
+    transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+    transport_config.initial_rtt(Duration::new(10000, 0));
+
     if options.stateless_retry {
         server_config.use_retry(true);
     }
