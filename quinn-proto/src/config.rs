@@ -873,7 +873,7 @@ impl fmt::Debug for ServerConfig {
 #[non_exhaustive]
 pub struct ClientConfig {
     /// Transport configuration to use
-    pub(crate) transport: Arc<TransportConfig>,
+    pub transport: Arc<TransportConfig>,
 
     /// Cryptographic configuration to use
     pub(crate) crypto: Arc<dyn crypto::ClientConfig>,
