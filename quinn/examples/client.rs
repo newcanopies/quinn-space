@@ -17,7 +17,7 @@ use tracing::{error, info};
 use url::Url;
 use proto::congestion::BbrConfig;
 use proto::congestion::NoCCConfig;
-use proto::TransportConfig;
+use proto::{AckFrequencyConfig};
 use proto::{VarInt};
 use chrono::Utc;
 
@@ -60,6 +60,9 @@ struct Opt {
     #[clap(long = "dtn")]
     dtn: bool,
 
+    // insecure mode: do not check the TLS cert from the server
+    #[clap(long = "insecure")]
+    insecure: bool,
 }
 
 fn main() {
@@ -117,39 +120,34 @@ async fn run(options: Opt) -> Result<()> {
     if options.keylog {
         client_crypto.key_log = Arc::new(rustls::KeyLogFile::new());
     }
-    let mut transport_config = TransportConfig::default();
-    let mut use_transport_config: bool = false; //TODO: another way to avoid using this bool?
 
+    let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
+    let transport_config = Arc::get_mut(&mut client_config.transport).unwrap();
     if let Some(cc) = options.cc {
         // should use match but can't get it to work with String vs &str.
         if cc == "bbr" {
             transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
-            use_transport_config = true;
         } else if cc == "none" {
             transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
-            use_transport_config = true;
         }
     }
     if options.large_max_idle_timeout {
         transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
-        use_transport_config = true;
     }
     if options.dtn {
         transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+        transport_config.initial_rtt(Duration::new(100000, 0));
         transport_config.receive_window(VarInt::MAX);
         transport_config.datagram_send_buffer_size(usize::MAX);
         transport_config.send_window(u64::MAX);
         transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
         transport_config.stream_receive_window(VarInt::MAX);
         transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
-        transport_config.initial_rtt(Duration::new(10000, 0));
-        use_transport_config = true;
+        let mut ack_frequency_config = AckFrequencyConfig::default();
+        ack_frequency_config.max_ack_delay(Some(Duration::MAX));
+        transport_config.ack_frequency_config(Some(ack_frequency_config));
     }
 
-    let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
-    if use_transport_config {
-        client_config.transport_config(transport_config.into());
-    }
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
     endpoint.set_default_client_config(client_config);
 

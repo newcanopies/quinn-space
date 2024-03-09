@@ -17,7 +17,7 @@ use clap::Parser;
 use tracing::{error, info_span};
 use tracing_futures::Instrument as _;
 use proto::congestion::NoCCConfig;
-use proto::VarInt;
+use proto::{AckFrequencyConfig, VarInt};
 
 mod common;
 
@@ -41,6 +41,11 @@ struct Opt {
     /// Address to listen on
     #[clap(long = "listen", default_value = "[::1]:4433")]
     listen: SocketAddr,
+
+    // sets many transport config parameters to very large values (such as ::MAX) to handle
+    // deep space usage, where delays and disruptions can be in order of minutes, hours, days
+    #[clap(long = "dtn")]
+    dtn: bool,
 }
 
 fn main() {
@@ -134,17 +139,23 @@ async fn run(options: Opt) -> Result<()> {
     }
 
     let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_crypto));
+
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
-    transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
-    transport_config.initial_rtt(Duration::new(2400, 0));
-    transport_config.receive_window(VarInt::MAX);
-    transport_config.datagram_send_buffer_size(usize::MAX);
-    transport_config.send_window(u64::MAX);
-    transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
-    transport_config.stream_receive_window(VarInt::MAX);
-    transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
-    transport_config.initial_rtt(Duration::new(10000, 0));
+    if options.dtn {
+        transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+        transport_config.initial_rtt(Duration::new(100000, 0));
+        transport_config.receive_window(VarInt::MAX);
+        transport_config.datagram_send_buffer_size(usize::MAX);
+        transport_config.send_window(u64::MAX);
+        transport_config.datagram_receive_buffer_size(Option::Some(usize::MAX));
+        transport_config.stream_receive_window(VarInt::MAX);
+        transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+        let mut ack_frequency_config = AckFrequencyConfig::default();
+        ack_frequency_config.max_ack_delay(Some(Duration::MAX));
+        transport_config.ack_frequency_config(Some(ack_frequency_config));
+        transport_config.initial_rtt(Duration::new(10000, 0));
+    }
 
     if options.stateless_retry {
         server_config.use_retry(true);
