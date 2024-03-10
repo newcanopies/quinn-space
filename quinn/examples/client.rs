@@ -116,6 +116,9 @@ async fn run(options: Opt) -> Result<()> {
     }
     let mut client_crypto = rustls::ClientConfig::builder()
         .with_safe_defaults()
+        // wanted to use the Opt cli flag --insecure for selecting no cert check or not,
+        // but can't find how to do it with a builder.
+        //.with_custom_certificate_verifier(SkipServerVerification::new())
         .with_root_certificates(roots)
         .with_no_client_auth();
 
@@ -237,4 +240,30 @@ fn strip_ipv6_brackets(host: &str) -> &str {
 
 fn duration_secs(x: &Duration) -> f32 {
     x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
+}
+
+// copied from insecure_connection.rs. no it is not the right way to do this, but for now, fast enabling testing.
+//
+// Dummy certificate verifier that treats any certificate as valid.
+/// NOTE, such verification is vulnerable to MITM attacks, but convenient for testing.
+struct SkipServerVerification;
+
+impl SkipServerVerification {
+    fn new() -> Arc<Self> {
+        Arc::new(Self)
+    }
+}
+
+impl rustls::client::ServerCertVerifier for SkipServerVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: std::time::SystemTime,
+    ) -> std::result::Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
+    }
 }
