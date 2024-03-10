@@ -118,11 +118,11 @@ async fn run(options: Opt) -> Result<()> {
         .with_safe_defaults()
         // wanted to use the Opt cli flag --insecure for selecting no cert check or not,
         // but can't find how to do it with a builder.
-        //.with_custom_certificate_verifier(SkipServerVerification::new())
-        .with_root_certificates(roots)
+        .with_custom_certificate_verifier(SkipServerVerification::new())
+        //.with_root_certificates(roots)
         .with_no_client_auth();
 
-    client_crypto.dangerous();
+    //client_crypto.dangerous();
 
     client_crypto.alpn_protocols = common::ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
     if options.keylog {
