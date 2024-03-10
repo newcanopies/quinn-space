@@ -17,7 +17,7 @@ use clap::Parser;
 use tracing::{error, info_span};
 use tracing_futures::Instrument as _;
 use proto::congestion::NoCCConfig;
-use proto::{AckFrequencyConfig, VarInt};
+use proto::{AckFrequencyConfig, MtuDiscoveryConfig, VarInt};
 
 mod common;
 
@@ -41,6 +41,10 @@ struct Opt {
     /// Address to listen on
     #[clap(long = "listen", default_value = "[::1]:4433")]
     listen: SocketAddr,
+
+    // window size
+    #[clap(long = "window")]
+    window: Option<u64>,
 
     // sets many transport config parameters to very large values (such as ::MAX) to handle
     // deep space usage, where delays and disruptions can be in order of minutes, hours, days
@@ -154,7 +158,10 @@ async fn run(options: Opt) -> Result<()> {
         let mut ack_frequency_config = AckFrequencyConfig::default();
         ack_frequency_config.max_ack_delay(Some(Duration::MAX));
         transport_config.ack_frequency_config(Some(ack_frequency_config));
-        transport_config.initial_rtt(Duration::new(10000, 0));
+        // disable mtu discovery
+        let mut mtu_discovery_config = MtuDiscoveryConfig::default();
+        mtu_discovery_config.upper_bound(1200);  //should be INITIAL_MTU
+        transport_config.mtu_discovery_config(Some(mtu_discovery_config));
     }
 
     if options.stateless_retry {

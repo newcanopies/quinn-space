@@ -17,7 +17,7 @@ use tracing::{error, info};
 use url::Url;
 use proto::congestion::BbrConfig;
 use proto::congestion::NoCCConfig;
-use proto::{AckFrequencyConfig};
+use proto::{AckFrequencyConfig, MtuDiscoveryConfig};
 use proto::{VarInt};
 use chrono::Utc;
 
@@ -54,6 +54,10 @@ struct Opt {
     // sets max_idle_timeout to a very large value
     #[clap(long = "large_max_idle_timeout")]
     large_max_idle_timeout: bool,
+
+    // window size
+    #[clap(long = "window")]
+    window: Option<u32>,
 
     // sets many transport config parameters to very large values (such as ::MAX) to handle
     // deep space usage, where delays and disruptions can be in order of minutes, hours, days
@@ -112,9 +116,13 @@ async fn run(options: Opt) -> Result<()> {
     }
     let mut client_crypto = rustls::ClientConfig::builder()
         .with_safe_defaults()
-        .with_custom_certificate_verifier(SkipServerVerification::new())
-        //.with_root_certificates(roots)
+        // wanted to use the Opt cli flag --insecure for selecting no cert check or not,
+        // but can't find how to do it with a builder.
+        //.with_custom_certificate_verifier(SkipServerVerification::new())
+        .with_root_certificates(roots)
         .with_no_client_auth();
+
+    client_crypto.dangerous();
 
     client_crypto.alpn_protocols = common::ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
     if options.keylog {
@@ -123,18 +131,7 @@ async fn run(options: Opt) -> Result<()> {
 
     let mut client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
     let transport_config = Arc::get_mut(&mut client_config.transport).unwrap();
-    if let Some(cc) = options.cc {
-        // should use match but can't get it to work with String vs &str.
-        if cc == "bbr" {
-            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
-        } else if cc == "none" {
-            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
-        }
-    }
-    if options.large_max_idle_timeout {
-        transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
-    }
-    if options.dtn {
+     if options.dtn {
         transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
         transport_config.initial_rtt(Duration::new(100000, 0));
         transport_config.receive_window(VarInt::MAX);
@@ -146,6 +143,26 @@ async fn run(options: Opt) -> Result<()> {
         let mut ack_frequency_config = AckFrequencyConfig::default();
         ack_frequency_config.max_ack_delay(Some(Duration::MAX));
         transport_config.ack_frequency_config(Some(ack_frequency_config));
+         // disable mtu discovery
+         let mut mtu_discovery_config = MtuDiscoveryConfig::default();
+         mtu_discovery_config.upper_bound(1200);  //should be INITIAL_MTU
+         transport_config.mtu_discovery_config(Some(mtu_discovery_config));
+
+     }
+    if let Some(cc) = options.cc {
+        // should use match but can't get it to work with String vs &str.
+        if cc == "bbr" {
+            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
+        } else if cc == "none" {
+            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+        }
+    }
+    if options.large_max_idle_timeout {
+        transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+    }
+    if let Some(window) = options.window {
+        transport_config.receive_window(VarInt::from_u32(window));
+        transport_config.send_window(window.into());
     }
 
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
