@@ -146,7 +146,7 @@ async fn run(options: Opt) -> Result<()> {
          // disable mtu discovery
          let mut mtu_discovery_config = MtuDiscoveryConfig::default();
          mtu_discovery_config.upper_bound(1200);  //should be INITIAL_MTU
-         mtu_discovery_config.interval(Duration::MAX);
+         mtu_discovery_config.interval(Duration::new(100000));
          transport_config.mtu_discovery_config(Some(mtu_discovery_config));
 
      }
