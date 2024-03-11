@@ -67,6 +67,10 @@ struct Opt {
     // insecure mode: do not check the TLS cert from the server
     #[clap(long = "insecure")]
     insecure: bool,
+
+    //to simulate a single connection with multiple http requests: repeat the same request
+    #[clap(long = "repeat")]
+    repeat: Option<u32>,
 }
 
 fn main() {
