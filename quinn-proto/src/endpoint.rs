@@ -22,7 +22,7 @@ use crate::{
     connection::{Connection, ConnectionError},
     crypto::{self, Keys, UnsupportedVersion},
     frame,
-    packet::{Header, Packet, PacketDecodeError, PacketNumber, PartialDecode},
+    packet::{Header, Packet, PacketDecodeError, PacketNumber, PartialDecode, PlainInitialHeader},
     shared::{
         ConnectionEvent, ConnectionEventInner, ConnectionId, EcnCodepoint, EndpointEvent,
         EndpointEventInner, IssuedCid,
@@ -45,6 +45,8 @@ pub struct Endpoint {
     server_config: Option<Arc<ServerConfig>>,
     /// Whether the underlying UDP socket promises not to fragment packets
     allow_mtud: bool,
+    /// Time at which a stateless reset was most recently sent
+    last_stateless_reset: Option<Instant>,
 }
 
 impl Endpoint {
@@ -67,6 +69,7 @@ impl Endpoint {
             config,
             server_config,
             allow_mtud,
+            last_stateless_reset: None,
         }
     }
 
@@ -205,32 +208,45 @@ impl Endpoint {
             None => {
                 debug!("packet for unrecognized connection {}", dst_cid);
                 return self
-                    .stateless_reset(datagram_len, addresses, dst_cid, buf)
+                    .stateless_reset(now, datagram_len, addresses, dst_cid, buf)
                     .map(DatagramEvent::Response);
             }
         };
 
-        if let Some(version) = first_decode.initial_version() {
+        if let Some(header) = first_decode.initial_header() {
             if datagram_len < MIN_INITIAL_SIZE as usize {
                 debug!("ignoring short initial for connection {}", dst_cid);
                 return None;
             }
 
-            let crypto = match server_config
-                .crypto
-                .initial_keys(version, dst_cid, Side::Server)
-            {
-                Ok(keys) => keys,
-                Err(UnsupportedVersion) => {
-                    // This probably indicates that the user set supported_versions incorrectly in
-                    // `EndpointConfig`.
-                    debug!(
+            let crypto =
+                match server_config
+                    .crypto
+                    .initial_keys(header.version, dst_cid, Side::Server)
+                {
+                    Ok(keys) => keys,
+                    Err(UnsupportedVersion) => {
+                        // This probably indicates that the user set supported_versions incorrectly in
+                        // `EndpointConfig`.
+                        debug!(
                         "ignoring initial packet version {:#x} unsupported by cryptographic layer",
-                        version
+                        header.version
                     );
-                    return None;
-                }
-            };
+                        return None;
+                    }
+                };
+
+            if let Err(reason) = self.early_validate_first_packet(header) {
+                return Some(DatagramEvent::Response(self.initial_close(
+                    header.version,
+                    addresses,
+                    &crypto,
+                    &header.src_cid,
+                    reason,
+                    buf,
+                )));
+            }
+
             return match first_decode.finish(Some(&*crypto.header.remote)) {
                 Ok(packet) => {
                     self.handle_first_packet(now, addresses, ecn, packet, remaining, &crypto, buf)
@@ -254,7 +270,7 @@ impl Endpoint {
         //
         if !dst_cid.is_empty() {
             return self
-                .stateless_reset(datagram_len, addresses, dst_cid, buf)
+                .stateless_reset(now, datagram_len, addresses, dst_cid, buf)
                 .map(DatagramEvent::Response);
         }
 
@@ -264,11 +280,20 @@ impl Endpoint {
 
     fn stateless_reset(
         &mut self,
+        now: Instant,
         inciting_dgram_len: usize,
         addresses: FourTuple,
         dst_cid: &ConnectionId,
         buf: &mut BytesMut,
     ) -> Option<Transmit> {
+        if self
+            .last_stateless_reset
+            .map_or(false, |last| last + self.config.min_reset_interval > now)
+        {
+            debug!("ignoring unexpected packet within minimum stateless reset interval");
+            return None;
+        }
+
         /// Minimum amount of padding for the stateless reset to look like a short-header packet
         const MIN_PADDING_LEN: usize = 5;
 
@@ -286,6 +311,7 @@ impl Endpoint {
             "sending stateless reset for {} to {}",
             dst_cid, addresses.remote
         );
+        self.last_stateless_reset = Some(now);
         // Resets with at least this much padding can't possibly be distinguished from real packets
         const IDEAL_MIN_PADDING_LEN: usize = MIN_PADDING_LEN + MAX_CID_SIZE;
         let padding_len = if max_padding_len <= IDEAL_MIN_PADDING_LEN {
@@ -436,36 +462,6 @@ impl Endpoint {
 
         let server_config = self.server_config.as_ref().unwrap().clone();
 
-        if self.connections.len() >= server_config.concurrent_connections as usize || self.is_full()
-        {
-            debug!("refusing connection");
-            return Some(DatagramEvent::Response(self.initial_close(
-                version,
-                addresses,
-                crypto,
-                &src_cid,
-                TransportError::CONNECTION_REFUSED(""),
-                buf,
-            )));
-        }
-
-        if dst_cid.len() < 8
-            && (!server_config.use_retry || dst_cid.len() != self.local_cid_generator.cid_len())
-        {
-            debug!(
-                "rejecting connection due to invalid DCID length {}",
-                dst_cid.len()
-            );
-            return Some(DatagramEvent::Response(self.initial_close(
-                version,
-                addresses,
-                crypto,
-                &src_cid,
-                TransportError::PROTOCOL_VIOLATION("invalid destination CID length"),
-                buf,
-            )));
-        }
-
         let (retry_src_cid, orig_dst_cid) = if server_config.use_retry {
             if token.is_empty() {
                 // First Initial
@@ -578,6 +574,39 @@ impl Endpoint {
                 }
             }
         }
+    }
+
+    /// Check if we should refuse a connection attempt regardless of the packet's contents
+    fn early_validate_first_packet(
+        &mut self,
+        header: &PlainInitialHeader,
+    ) -> Result<(), TransportError> {
+        let server_config = self.server_config.as_ref().unwrap();
+        if self.connections.len() >= server_config.concurrent_connections as usize || self.is_full()
+        {
+            debug!("refusing connection");
+            return Err(TransportError::CONNECTION_REFUSED(""));
+        }
+
+        // RFC9000 §7.2 dictates that initial (client-chosen) destination CIDs must be at least 8
+        // bytes. If this is a Retry packet, then the length must instead match our usual CID
+        // length. If we ever issue non-Retry address validation tokens via `NEW_TOKEN`, then we'll
+        // also need to validate CID length for those after decoding the token.
+        if header.dst_cid.len() < 8
+            && (!server_config.use_retry
+                || (!header.token_pos.is_empty()
+                    && header.dst_cid.len() != self.local_cid_generator.cid_len()))
+        {
+            debug!(
+                "rejecting connection due to invalid DCID length {}",
+                header.dst_cid.len()
+            );
+            return Err(TransportError::PROTOCOL_VIOLATION(
+                "invalid destination CID length",
+            ));
+        }
+
+        Ok(())
     }
 
     fn add_connection(
