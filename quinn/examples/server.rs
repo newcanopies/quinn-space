@@ -16,7 +16,7 @@ use chrono::Utc;
 use clap::Parser;
 use tracing::{error, info_span};
 use tracing_futures::Instrument as _;
-use proto::congestion::NoCCConfig;
+use proto::congestion::{BbrConfig, NoCCConfig};
 use proto::{AckFrequencyConfig, MtuDiscoveryConfig, VarInt};
 
 mod common;
@@ -42,9 +42,19 @@ struct Opt {
     #[clap(long = "listen", default_value = "[::1]:4433")]
     listen: SocketAddr,
 
+    // sets the congestion control methods. Since cubic is default, options are:
+    // "bbr" or "none".
+    // The "none" means a cc algo which does no congestion control... (deep space use case)
+    #[clap(long = "cc")]
+    cc: Option<String>,
+
+    // sets max_idle_timeout to a very large value
+    #[clap(long = "large_max_idle_timeout")]
+    large_max_idle_timeout: bool,
+
     // window size
     #[clap(long = "window")]
-    window: Option<u64>,
+    window: Option<u32>,
 
     #[clap(long = "initial_rtt")]
     initial_rtt: Option<u64>,
@@ -168,7 +178,21 @@ async fn run(options: Opt) -> Result<()> {
         transport_config.mtu_discovery_config(Some(mtu_discovery_config));
     }
 
-
+    if let Some(cc) = options.cc {
+        // should use match but can't get it to work with String vs &str.
+        if cc == "bbr" {
+            transport_config.congestion_controller_factory(Arc::new(BbrConfig::default()));
+        } else if cc == "none" {
+            transport_config.congestion_controller_factory(Arc::new(NoCCConfig::default()));
+        }
+    }
+    if options.large_max_idle_timeout {
+        transport_config.max_idle_timeout(Some(VarInt::MAX.into()));
+    }
+    if let Some(window) = options.window {
+        transport_config.receive_window(VarInt::from_u32(window));
+        transport_config.send_window(window.into());
+    }
     if let Some(initial_rtt) = options.initial_rtt {
         transport_config.initial_rtt(Duration::new(initial_rtt,0));
     }
