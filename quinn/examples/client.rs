@@ -59,6 +59,10 @@ struct Opt {
     #[clap(long = "window")]
     window: Option<u32>,
 
+    #[clap(long = "initial_rtt")]
+    initial_rtt: Option<u64>,
+
+
     // sets many transport config parameters to very large values (such as ::MAX) to handle
     // deep space usage, where delays and disruptions can be in order of minutes, hours, days
     #[clap(long = "dtn")]
@@ -168,6 +172,9 @@ async fn run(options: Opt) -> Result<()> {
     if let Some(window) = options.window {
         transport_config.receive_window(VarInt::from_u32(window));
         transport_config.send_window(window.into());
+    }
+    if let Some(initial_rtt) = options.initial_rtt {
+        transport_config.initial_rtt(Duration::new(initial_rtt,0));
     }
 
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
