@@ -46,6 +46,9 @@ struct Opt {
     #[clap(long = "window")]
     window: Option<u64>,
 
+    #[clap(long = "initial_rtt")]
+    initial_rtt: Option<u64>,
+
     // sets many transport config parameters to very large values (such as ::MAX) to handle
     // deep space usage, where delays and disruptions can be in order of minutes, hours, days
     #[clap(long = "dtn")]
@@ -163,6 +166,11 @@ async fn run(options: Opt) -> Result<()> {
         mtu_discovery_config.upper_bound(1200);  //should be INITIAL_MTU
         mtu_discovery_config.interval(Duration::new(1000000, 0));
         transport_config.mtu_discovery_config(Some(mtu_discovery_config));
+    }
+
+
+    if let Some(initial_rtt) = options.initial_rtt {
+        transport_config.initial_rtt(Duration::new(initial_rtt,0));
     }
 
     if options.stateless_retry {
