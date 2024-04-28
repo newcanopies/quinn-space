@@ -176,8 +176,9 @@ async fn run(options: Opt) -> Result<()> {
         mtu_discovery_config.upper_bound(1200);  //should be INITIAL_MTU
         mtu_discovery_config.interval(Duration::new(1000000, 0));
         transport_config.mtu_discovery_config(Some(mtu_discovery_config));
-        transport_config.max_concurrent_bidi_streams(VarInt::MAX);
-        transport_config.max_concurrent_uni_streams(VarInt::MAX);
+        // max_concurrent_*_streams to VarInt::MAX crashes the process
+        //transport_config.max_concurrent_bidi_streams(VarInt::MAX);
+        //transport_config.max_concurrent_uni_streams(VarInt::MAX);
         transport_config.packet_threshold(u32::MAX);
         transport_config.time_threshold(f32::MAX);
     }
