@@ -180,7 +180,9 @@ async fn run(options: Opt) -> Result<()> {
         //transport_config.max_concurrent_bidi_streams(VarInt::MAX);
         //transport_config.max_concurrent_uni_streams(VarInt::MAX);
         transport_config.packet_threshold(u32::MAX);
-        transport_config.time_threshold(f32::MAX);
+        // setting time_threshold to f32::MAX creates a crash at runtime
+        // so setting a large value
+        transport_config.time_threshold(100000.0);
     }
 
     if let Some(cc) = options.cc {
