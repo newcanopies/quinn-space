@@ -11,6 +11,15 @@
 
 Quinn is a pure-rust, async-compatible implementation of the IETF [QUIC][quic] transport protocol.
 
+## This Fork
+
+This fork of Quinn is a sandbox to do simulations for running QUIC in deep space. Currently, it does the following:
+
+- passes a transport config appropriate to deep space, to the quinn/example/{client,server}.rs HTTP clients and servers. Search for "dtn"
+- "implements" a almost Noop congestion control algorithm (just setting the window size) in quinn-proto/src/congestion/no_cc.rs 
+
+Again, this is a sandbox and there is no implicit statement that any of these modifications are the right ones for deep space. However, we did succeed simulating with large RTT.
+
 ## Features
 
 - Simultaneous client/server operation
